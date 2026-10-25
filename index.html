@@ -281,7 +281,7 @@ legend{font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:
 
   <section aria-label="Productos">
     <div class="wrap">
-      <div class="result-line"><span id="resultCount"></span><span>Productos y precios de ejemplo</span></div>
+      <div class="result-line"><span id="resultCount"></span><span>Precios en guaraníes</span></div>
       <div class="grid" id="grid"></div>
     </div>
   </section>
@@ -409,33 +409,20 @@ const CATEGORIAS = [
 const ZONAS = ['Asunción','Lambaré','Fernando de la Mora','San Lorenzo','Luque','Capiatá','Mariano Roque Alonso','Villa Elisa','Ñemby','Limpio','Otra ciudad de Central'];
 const PAGOS = ['Transferencia bancaria','Pago con QR','Efectivo contra entrega','Tarjeta de débito o crédito'];
 
-/* Productos de ejemplo. Más adelante se cargan desde Google Sheets.
-   id: código del producto. Prefijo por categoría: COC cocina y bazar, ELE electrónica, CEL celular, HOG hogar.
-   stock: 0 = agotado. oferta: precio rebajado (opcional). foto: link a la imagen (opcional). */
-const PRODUCTOS = [
-  { id:'COC-001', nombre:'Waflera doble antiadherente', cat:'cocina', precio:220000, oferta:189000, stock:8, destacado:true },
-  { id:'COC-002', nombre:'Sandwichera 3 en 1', cat:'cocina', precio:165000, stock:5, destacado:true },
-  { id:'COC-003', nombre:'Pava eléctrica 1,7 L', cat:'cocina', precio:145000, stock:12 },
-  { id:'COC-004', nombre:'Licuadora de mano con accesorios', cat:'cocina', precio:175000, stock:2 },
-  { id:'ELE-001', nombre:'Parlante Bluetooth portátil', cat:'electronica', precio:150000, oferta:129000, stock:6, destacado:true },
-  { id:'ELE-002', nombre:'Auriculares inalámbricos', cat:'electronica', precio:120000, stock:10 },
-  { id:'ELE-003', nombre:'Reloj inteligente deportivo', cat:'electronica', precio:210000, stock:3 },
-  { id:'ELE-004', nombre:'Lámpara LED recargable', cat:'electronica', precio:85000, stock:15 },
-  { id:'CEL-001', nombre:'Cargador rápido 20W USB-C', cat:'celular', precio:65000, stock:20, destacado:true },
-  { id:'CEL-002', nombre:'Cable USB-C reforzado 1 m', cat:'celular', precio:25000, stock:30 },
-  { id:'CEL-003', nombre:'Power bank 10.000 mAh', cat:'celular', precio:130000, stock:7 },
-  { id:'CEL-004', nombre:'Soporte de celular para auto', cat:'celular', precio:45000, stock:0 },
-  { id:'HOG-001', nombre:'Zapatilla eléctrica 4 tomas con USB', cat:'hogar', precio:70000, stock:9 },
-  { id:'HOG-002', nombre:'Ventilador de mesa recargable', cat:'hogar', precio:160000, stock:0 },
-  { id:'HOG-003', nombre:'Tira de luces LED 5 m con control', cat:'hogar', precio:95000, oferta:79000, stock:11 }
-];
+/* Los productos se leen de la planilla de Google Sheets publicada como CSV.
+   Columnas: Código, Nombre, Categoría, Precio, Precio oferta, Stock, Destacado, Mostrar en web.
+   Fotos: carpeta "fotos" del sitio, con el código como nombre (ej.: fotos/COC-001.jpg). */
+const CATALOGO_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRLegjgi7-wJYUbgo98GyiLDEPmO2evj259BDdN0_7HNhc8MVG9-kREQaF1kHYxJX6rjHBxq4F0cuWy/pub?gid=1768066259&single=true&output=csv';
+const CARPETA_FOTOS = 'fotos/';
+let PRODUCTOS = [];
 /* ============================================================== */
 
 const ICONOS = {
   cocina: '<path d="M10 20h28v12a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8z"/><path d="M5 20h5M38 20h5M19 14c0-3 3-3 3-6M27 14c0-3 3-3 3-6"/>',
   electronica: '<rect x="13" y="7" width="22" height="34" rx="5"/><circle cx="24" cy="29" r="6"/><circle cx="24" cy="16" r="2.2"/>',
   celular: '<rect x="15" y="5" width="18" height="38" rx="4"/><path d="M21 37h6"/>',
-  hogar: '<path d="M16 7h16l6 17H10z"/><path d="M24 24v14M16 41h16"/>'
+  hogar: '<path d="M16 7h16l6 17H10z"/><path d="M24 24v14M16 41h16"/>',
+  otros: '<path d="M8 16l16-8 16 8v18l-16 8-16-8z"/><path d="M8 16l16 8 16-8M24 24v18"/>'
 };
 
 const $ = (s) => document.getElementById(s);
@@ -444,19 +431,119 @@ const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const precioFinal = (p) => p.oferta && p.oferta < p.precio ? p.oferta : p.precio;
 const catNombre = (id) => (CATEGORIAS.find((c) => c.id === id) || {}).nombre || '';
-const byId = Object.fromEntries(PRODUCTOS.map((p) => [p.id, p]));
+let byId = {};
+const KEY_CATALOGO = 'aleNovedades.catalogo';
+let cargando = true;
+let errorCarga = false;
 
 const KEY = 'aleNovedades.pedido';
 const KEY_DATOS = 'aleNovedades.datos';
 let state = { cat: 'todos', q: '', sort: 'destacados' };
 let cart = {};
 try { cart = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cart = {}; }
-for (const id of Object.keys(cart)) { if (!byId[id] || byId[id].stock <= 0) delete cart[id]; }
+function limpiarCarrito() {
+  for (const id of Object.keys(cart)) {
+    if (!byId[id] || byId[id].stock <= 0) delete cart[id];
+    else if (cart[id] > byId[id].stock) cart[id] = byId[id].stock;
+  }
+  saveCart();
+}
 function saveCart() { try { localStorage.setItem(KEY, JSON.stringify(cart)); } catch (e) {} }
+
+/* ---------- Lectura de la planilla ---------- */
+function parseCSV(text) {
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+      else f += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === '\n') { row.push(f); rows.push(row); row = []; f = ''; }
+    else if (c !== '\r') f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+const numero = (v) => { const d = String(v || '').split(/[,]00$|\.00$/)[0].replace(/[^0-9]/g, ''); return d ? parseInt(d, 10) : 0; };
+const esSi = (v) => norm(String(v || '').trim()).startsWith('s');
+function categoriaId(nombre) {
+  const n = norm(String(nombre || '').trim());
+  if (!n) return 'otros';
+  const encontrada = CATEGORIAS.find((c) => norm(c.nombre) === n);
+  if (encontrada) return encontrada.id;
+  const id = 'c-' + n.replace(/[^a-z0-9]+/g, '-');
+  if (!CATEGORIAS.find((c) => c.id === id)) {
+    CATEGORIAS.splice(CATEGORIAS.length - 1, 0, { id, nombre: String(nombre).trim() });
+  }
+  return id;
+}
+function productosDesdeCSV(text) {
+  const rows = parseCSV(text);
+  if (!rows.length) return [];
+  const head = rows[0].map((h) => norm(h.trim()));
+  const col = (nombre) => head.indexOf(nombre);
+  const c = { cod: col('codigo'), nom: col('nombre'), cat: col('categoria'), pre: col('precio'), ofe: col('precio oferta'), sto: col('stock'), des: col('destacado'), mos: col('mostrar en web') };
+  if (c.cod < 0 || c.nom < 0 || c.pre < 0) throw new Error('Formato de planilla no reconocido');
+  const lista = [];
+  const vistos = new Set();
+  for (const r of rows.slice(1)) {
+    const id = String(r[c.cod] || '').trim().toUpperCase();
+    const nombre = String(r[c.nom] || '').trim();
+    if (!id || !nombre || vistos.has(id)) continue;
+    if (c.mos >= 0 && String(r[c.mos] || '').trim() && !esSi(r[c.mos])) continue;
+    const precio = numero(r[c.pre]);
+    if (!precio) continue;
+    const oferta = c.ofe >= 0 ? numero(r[c.ofe]) : 0;
+    vistos.add(id);
+    lista.push({
+      id, nombre,
+      cat: categoriaId(c.cat >= 0 ? r[c.cat] : ''),
+      precio,
+      oferta: oferta && oferta < precio ? oferta : null,
+      stock: c.sto >= 0 ? numero(r[c.sto]) : 0,
+      destacado: c.des >= 0 ? esSi(r[c.des]) : false
+    });
+  }
+  return lista;
+}
+function usarCatalogo(lista) {
+  PRODUCTOS = lista;
+  byId = Object.fromEntries(PRODUCTOS.map((p) => [p.id, p]));
+  limpiarCarrito();
+}
+async function cargarCatalogo() {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(KEY_CATALOGO) || 'null');
+    if (guardado && Array.isArray(guardado.lista)) {
+      guardado.lista.forEach((p) => categoriaId(p.catNombre));
+      usarCatalogo(guardado.lista); cargando = false; renderTodo();
+    }
+  } catch (e) {}
+  try {
+    const res = await fetch(CATALOGO_CSV, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const lista = productosDesdeCSV(await res.text());
+    usarCatalogo(lista);
+    errorCarga = false;
+    try { localStorage.setItem(KEY_CATALOGO, JSON.stringify({ lista: lista.map((p) => ({ ...p, catNombre: catNombre(p.cat) })) })); } catch (e) {}
+  } catch (e) {
+    if (!PRODUCTOS.length) errorCarga = true;
+  }
+  cargando = false;
+  renderTodo();
+}
+function renderTodo() { renderChips(); renderGrid(); renderCart(); }
 
 /* ---------- Catálogo ---------- */
 function renderChips() {
-  $('chips').innerHTML = CATEGORIAS.map((c) =>
+  const conProductos = (c) => {
+    if (!PRODUCTOS.length || c.id === 'todos') return true;
+    if (c.id === 'ofertas') return PRODUCTOS.some((p) => p.oferta && p.oferta < p.precio);
+    return PRODUCTOS.some((p) => p.cat === c.id);
+  };
+  $('chips').innerHTML = CATEGORIAS.filter(conProductos).map((c) =>
     `<button type="button" class="chip" data-cat="${c.id}" aria-pressed="${state.cat === c.id}">${esc(c.nombre)}</button>`
   ).join('');
 }
@@ -492,9 +579,7 @@ function card(p) {
   if (p.stock <= 0) stock = '<span class="stock out">Sin stock por ahora</span>';
   else if (p.stock <= 3) stock = `<span class="stock low">Últimas ${p.stock} unidades</span>`;
   else stock = '<span class="stock">Disponible</span>';
-  const media = p.foto
-    ? `<img src="${esc(p.foto)}" alt="${esc(p.nombre)}" loading="lazy">`
-    : `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[p.cat] || ''}</svg>`;
+  const media = `<img src="${CARPETA_FOTOS}${encodeURIComponent(p.id)}.jpg" alt="${esc(p.nombre)}" loading="lazy" data-cat="${esc(p.cat)}">`;
   return `<article class="card">
     <div class="tile">${media}<div class="badges">${badges.join('')}</div></div>
     <div class="card-body">
@@ -507,7 +592,21 @@ function card(p) {
   </article>`;
 }
 
+function iconoSVG(cat) {
+  return `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[cat] || ICONOS.otros}</svg>`;
+}
+
 function renderGrid() {
+  if (cargando && !PRODUCTOS.length) {
+    $('resultCount').textContent = 'Cargando productos...';
+    $('grid').innerHTML = '<div class="empty">Cargando el catálogo...</div>';
+    return;
+  }
+  if (errorCarga) {
+    $('resultCount').textContent = '';
+    $('grid').innerHTML = '<div class="empty">No pudimos cargar el catálogo en este momento. Recargá la página o escribinos por WhatsApp y te pasamos los productos disponibles.</div>';
+    return;
+  }
   const list = filtrados();
   $('resultCount').textContent = list.length === 1 ? '1 producto' : `${list.length} productos`;
   $('grid').innerHTML = list.length
@@ -516,8 +615,9 @@ function renderGrid() {
 }
 
 /* ---------- Pedido ---------- */
-function totalItems() { return Object.values(cart).reduce((a, b) => a + b, 0); }
-function subtotal() { return Object.entries(cart).reduce((s, [id, q]) => s + precioFinal(byId[id]) * q, 0); }
+function itemsValidos() { return Object.entries(cart).filter(([id]) => byId[id]); }
+function totalItems() { return itemsValidos().reduce((a, [, q]) => a + q, 0); }
+function subtotal() { return itemsValidos().reduce((s, [id, q]) => s + precioFinal(byId[id]) * q, 0); }
 
 function addToCart(id) {
   const p = byId[id]; if (!p || p.stock <= 0) return;
@@ -535,7 +635,7 @@ function setQty(id, q) {
 
 function renderCart() {
   $('cartCount').textContent = totalItems();
-  const ids = Object.keys(cart);
+  const ids = itemsValidos().map(([id]) => id);
   if (!ids.length) {
     $('lines').innerHTML = '<li class="cart-empty">Todavía no agregaste productos.<br>Elegí algo del catálogo y aparece acá.</li>';
   } else {
@@ -562,7 +662,7 @@ function renderCart() {
 }
 
 function mensaje() {
-  const lineas = Object.entries(cart).map(([id, q]) => {
+  const lineas = itemsValidos().map(([id, q]) => {
     const p = byId[id];
     return `- [${p.id}] ${q} x ${p.nombre}: ${fmt(precioFinal(p) * q)}`;
   });
@@ -638,7 +738,16 @@ function toast(msg) {
 $('zona').innerHTML = '<option value="">Elegí tu ciudad</option>' + ZONAS.map((z) => `<option>${esc(z)}</option>`).join('');
 $('pago').innerHTML = PAGOS.map((p) => `<option>${esc(p)}</option>`).join('');
 loadDatos();
-renderChips(); renderGrid(); renderCart();
+renderTodo();
+cargarCatalogo();
+$('grid').addEventListener('error', (e) => {
+  const img = e.target;
+  if (img && img.tagName === 'IMG' && !img.dataset.fallback) {
+    img.dataset.fallback = '1';
+    img.insertAdjacentHTML('afterend', iconoSVG(img.dataset.cat));
+    img.remove();
+  }
+}, true);
 
 const waConsulta = waLink(`Hola ${CONFIG.nombre}, quiero hacer una consulta.`);
 $('waFloat').href = waConsulta;
