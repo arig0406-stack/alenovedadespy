@@ -254,8 +254,17 @@ legend{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:
 .copy{height:46px;border-radius:999px;border:1px solid var(--line);background:var(--paper);font-weight:600;cursor:pointer}
 .copy:disabled{opacity:.5;cursor:not-allowed}
 .foot-note{font-size:12px;color:var(--muted);text-align:center;margin:0}
+.privacy{margin:0 0 12px;font-size:12px;color:var(--muted)}
+.order-id{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;padding:0 4px}
+.order-id b{font-family:var(--display);color:var(--ink);letter-spacing:.02em}
+.sent{display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:var(--r);background:var(--ink);color:var(--paper-ink)}
+.sent-ico{flex-shrink:0;width:36px;height:36px;border-radius:50%;background:var(--wa);display:flex;align-items:center;justify-content:center;color:#FFFFFF}
+.sent-ico svg{width:18px;height:18px}
+.sent b{font-family:var(--display);font-size:17px;letter-spacing:-.01em}
+.sent p{margin:4px 0 10px;font-size:13px;color:#BDB7AD}
+.new-order{height:40px;padding:0 16px;border-radius:999px;border:0;background:var(--paper-ink);color:var(--ink);font-weight:700;cursor:pointer}
 
-.toast{position:fixed;left:50%;top:calc(84px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--paper-ink);padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;max-width:calc(100% - 32px);box-shadow:var(--shadow);animation:drop .25s ease-out;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast{position:fixed;left:50%;top:calc(84px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:35;background:var(--ink);color:var(--paper-ink);padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;max-width:calc(100% - 32px);box-shadow:var(--shadow);animation:drop .25s ease-out;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @keyframes drop{from{transform:translate(-50%,-10px);opacity:0}}
 </style>
 </head>
@@ -384,6 +393,15 @@ legend{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:
     </button>
   </div>
   <div class="drawer-body">
+    <div class="sent" id="sent" hidden>
+      <span class="sent-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></span>
+      <div>
+        <b>Pedido <span id="sentId"></span> enviado</b>
+        <p>Si WhatsApp no se abrió, tocá Enviar de nuevo. Te respondemos por ahí para confirmar.</p>
+        <button type="button" class="new-order" id="newOrder">Empezar un pedido nuevo</button>
+      </div>
+    </div>
+    <div class="order-id" id="orderIdRow" hidden>Pedido <b id="orderId"></b></div>
     <div class="box"><ul class="lines" id="lines"></ul></div>
     <form id="orderForm" class="box" novalidate>
       <fieldset>
@@ -392,6 +410,11 @@ legend{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:
           <label for="nombre">Nombre y apellido</label>
           <input id="nombre" name="nombre" autocomplete="name" placeholder="Ej.: María González">
           <span class="err" id="errNombre" hidden>Escribí tu nombre para saber quién hace el pedido.</span>
+        </div>
+        <div class="field">
+          <label for="celular">Celular (WhatsApp)</label>
+          <input id="celular" name="celular" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ej.: 0981 123 456">
+          <span class="err" id="errCel" hidden>Escribí tu número de celular, por ejemplo 0981 123 456.</span>
         </div>
         <div class="field">
           <label for="zona">Ciudad</label>
@@ -407,6 +430,7 @@ legend{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:
           <select id="pago" name="pago"></select>
         </div>
       </fieldset>
+      <p class="privacy">Usamos tus datos solo para gestionar tu pedido.</p>
     </form>
     <div class="box summary" id="summary" hidden></div>
   </div>
@@ -428,6 +452,8 @@ const CONFIG = {
   nombre: 'Ale Novedades',
   whatsapp: '595987309433', // Número con código de país, sin + ni espacios
   whatsappVisible: '+595 987 309 433',
+  // Link del registro de pedidos (Apps Script de Google Sheets). Vacío = no se registra.
+  registroUrl: 'https://script.google.com/macros/s/AKfycbx5rg2vOMh41gfB5UhlMsINvw-zU-6vsvS04V9vzh-yKgKUJLu_r92AHzUL8oos5POW/exec',
   direccion: 'Calle Francisco Acuña de Figueroa, Lambaré, Paraguay',
   // Mapa: para un pin exacto, reemplazá la dirección por las coordenadas (ej.: '-25.3456,-57.6123')
   mapaBusqueda: 'Calle Francisco Acuña de Figueroa, Lambaré, Paraguay',
@@ -506,6 +532,8 @@ const byId = Object.fromEntries(PRODUCTOS.map((p) => [p.id, p]));
 
 const KEY = 'aleNovedades.pedido';
 const KEY_DATOS = 'aleNovedades.datos';
+const KEY_ID = 'aleNovedades.numeroPedido';
+const KEY_SENT = 'aleNovedades.enviado';
 let state = { cat: 'todos', q: '', sort: 'destacados' };
 let cart = {};
 try { cart = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cart = {}; }
@@ -654,7 +682,63 @@ function renderCart() {
     <div><span>Envío</span><span>A confirmar</span></div>
     <div class="total"><span>Total</span><span>${fmt(subtotal())}</span></div>` : '';
   $('orderForm').hidden = !ids.length;
+  $('orderIdRow').hidden = !ids.length;
+  if (ids.length) $('orderId').textContent = pedidoId();
+  if (!ids.length) { $('sent').hidden = true; pedidoActual = null; try { localStorage.removeItem(KEY_ID); localStorage.removeItem(KEY_SENT); } catch (e) {} }
   updateSend();
+}
+
+/* ---------- Número de pedido y registro ---------- */
+function nuevoId() {
+  const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let r = ''; for (let i = 0; i < 3; i++) r += abc[Math.floor(Math.random() * abc.length)];
+  return `AN-${String(d.getFullYear()).slice(2)}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${r}`;
+}
+let pedidoActual = null;
+try { pedidoActual = localStorage.getItem(KEY_ID); } catch (e) {}
+function pedidoId() {
+  if (!pedidoActual) { pedidoActual = nuevoId(); try { localStorage.setItem(KEY_ID, pedidoActual); } catch (e) {} }
+  return pedidoActual;
+}
+function soloDigitos(v) { return String(v || '').replace(/\D/g, ''); }
+
+function registrar() {
+  if (!CONFIG.registroUrl) return;
+  const items = Object.entries(cart).map(([id, q]) => ({ p: byId[id], q }));
+  const datos = {
+    pedido: pedidoId(),
+    nombre: $('nombre').value.trim(),
+    celular: soloDigitos($('celular').value),
+    ciudad: $('zona').value,
+    direccion: $('direccion').value.trim(),
+    pago: $('pago').value,
+    codigos: items.map(({ p, q }) => (q > 1 ? `${p.id} x${q}` : p.id)).join(', '),
+    detalle: items.map(({ p, q }) => `${q} x ${p.nombre}`).join(' | '),
+    unidades: totalItems(),
+    total: subtotal()
+  };
+  const cuerpo = JSON.stringify(datos);
+  try {
+    if (navigator.sendBeacon && navigator.sendBeacon(CONFIG.registroUrl, new Blob([cuerpo], { type: 'text/plain;charset=utf-8' }))) return;
+  } catch (e) {}
+  try { fetch(CONFIG.registroUrl, { method: 'POST', mode: 'no-cors', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: cuerpo }); } catch (e) {}
+}
+
+function marcarEnviado() {
+  try { localStorage.setItem(KEY_SENT, pedidoId()); } catch (e) {}
+  $('sentId').textContent = pedidoId();
+  $('sent').hidden = false;
+  $('drawer').querySelector('.drawer-body').scrollTop = 0;
+}
+
+function nuevoPedido() {
+  cart = {}; saveCart();
+  pedidoActual = null;
+  try { localStorage.removeItem(KEY_ID); localStorage.removeItem(KEY_SENT); } catch (e) {}
+  $('sent').hidden = true;
+  renderCart(); closeCart();
+  toast('Listo, podés armar un pedido nuevo');
 }
 
 function mensaje() {
@@ -666,7 +750,9 @@ function mensaje() {
   const zona = $('zona').value;
   const dir = $('direccion').value.trim();
   const pago = $('pago').value;
+  const cel = $('celular').value.trim();
   return [
+    `Pedido ${pedidoId()}`,
     `Hola ${CONFIG.nombre}, quiero hacer este pedido:`,
     '',
     ...lineas,
@@ -676,6 +762,7 @@ function mensaje() {
     `Forma de pago: ${pago}`,
     '',
     `Nombre: ${nombre || 'sin indicar'}`,
+    cel ? `Celular: ${cel}` : null,
     dir ? `Dirección: ${dir}` : null
   ].filter((l) => l !== null).join('\n');
 }
@@ -694,19 +781,21 @@ function updateSend() {
 
 function validar() {
   const okN = !!$('nombre').value.trim();
+  const dig = soloDigitos($('celular').value).length;
+  const okC = dig >= 9 && dig <= 13;
   const okZ = !!$('zona').value;
-  $('errNombre').hidden = okN; $('errZona').hidden = okZ;
-  if (!okN) $('nombre').focus(); else if (!okZ) $('zona').focus();
-  return okN && okZ;
+  $('errNombre').hidden = okN; $('errCel').hidden = okC; $('errZona').hidden = okZ;
+  if (!okN) $('nombre').focus(); else if (!okC) $('celular').focus(); else if (!okZ) $('zona').focus();
+  return okN && okC && okZ;
 }
 
 function saveDatos() {
-  try { localStorage.setItem(KEY_DATOS, JSON.stringify({ nombre: $('nombre').value, zona: $('zona').value, direccion: $('direccion').value, pago: $('pago').value })); } catch (e) {}
+  try { localStorage.setItem(KEY_DATOS, JSON.stringify({ nombre: $('nombre').value, celular: $('celular').value, zona: $('zona').value, direccion: $('direccion').value, pago: $('pago').value })); } catch (e) {}
 }
 function loadDatos() {
   try {
     const d = JSON.parse(localStorage.getItem(KEY_DATOS) || 'null');
-    if (d) { $('nombre').value = d.nombre || ''; $('zona').value = d.zona || ''; $('direccion').value = d.direccion || ''; if (d.pago) $('pago').value = d.pago; }
+    if (d) { $('nombre').value = d.nombre || ''; $('celular').value = d.celular || ''; $('zona').value = d.zona || ''; $('direccion').value = d.direccion || ''; if (d.pago) $('pago').value = d.pago; }
   } catch (e) {}
 }
 
@@ -735,6 +824,7 @@ $('zona').innerHTML = '<option value="">Elegí tu ciudad</option>' + ZONAS.map((
 $('pago').innerHTML = PAGOS.map((p) => `<option>${esc(p)}</option>`).join('');
 loadDatos();
 renderChips(); renderGrid(); renderCart();
+try { if (totalItems() && localStorage.getItem(KEY_SENT) === pedidoActual) { $('sentId').textContent = pedidoActual; $('sent').hidden = false; } } catch (e) {}
 
 const waConsulta = waLink(`Hola ${CONFIG.nombre}, quiero hacer una consulta.`);
 $('waFloat').href = waConsulta;
@@ -793,16 +883,20 @@ $('bar').addEventListener('click', openCart);
 $('closeCart').addEventListener('click', closeCart);
 $('overlay').addEventListener('click', closeCart);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('drawer').hidden) closeCart(); });
-$('orderForm').addEventListener('input', () => { saveDatos(); updateSend(); $('errNombre').hidden = true; $('errZona').hidden = true; });
+$('orderForm').addEventListener('input', () => { saveDatos(); updateSend(); $('errNombre').hidden = true; $('errCel').hidden = true; $('errZona').hidden = true; });
 $('orderForm').addEventListener('change', () => { saveDatos(); updateSend(); });
 $('orderForm').addEventListener('submit', (e) => e.preventDefault());
 $('send').addEventListener('click', (e) => {
   if (!totalItems() || !validar()) { e.preventDefault(); return; }
   $('send').href = waLink(mensaje());
+  registrar();
+  setTimeout(marcarEnviado, 300);
 });
+$('newOrder').addEventListener('click', nuevoPedido);
 $('copy').addEventListener('click', async () => {
   if (!validar()) return;
   const txt = mensaje();
+  registrar();
   try { await navigator.clipboard.writeText(txt); toast('Pedido copiado. Pegalo en WhatsApp.'); }
   catch (err) {
     const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly', '');
