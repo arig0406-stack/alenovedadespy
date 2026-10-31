@@ -315,7 +315,7 @@ legend{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:
       </div>
     </div>
     <div id="catalogBody"></div>
-    <p class="note">Precios en guaraníes. Productos y precios de ejemplo.</p>
+    <p class="note">Precios en guaraníes.</p>
   </section>
 
   <section class="wrap how" id="como-comprar" aria-labelledby="howTitle">
@@ -472,26 +472,13 @@ const CATEGORIAS = [
 const ZONAS = ['Asunción','Lambaré','Fernando de la Mora','San Lorenzo','Luque','Capiatá','Mariano Roque Alonso','Villa Elisa','Ñemby','Limpio','Otra ciudad de Central'];
 const PAGOS = ['Transferencia bancaria','Pago con QR','Efectivo contra entrega','Tarjeta de débito o crédito'];
 
-/* Productos de ejemplo. Más adelante se cargan desde Google Sheets.
-   id: código del producto. Prefijo por categoría: COC cocina y bazar, ELE electrónica, CEL celular, HOG hogar.
-   stock: 0 = agotado. oferta: precio rebajado (opcional). foto: link a la imagen (opcional). */
-const PRODUCTOS = [
-  { id:'COC-001', nombre:'Waflera doble antiadherente', cat:'cocina', precio:220000, oferta:189000, stock:8, destacado:true },
-  { id:'COC-002', nombre:'Sandwichera 3 en 1', cat:'cocina', precio:165000, stock:5, destacado:true },
-  { id:'COC-003', nombre:'Pava eléctrica 1,7 L', cat:'cocina', precio:145000, stock:12 },
-  { id:'COC-004', nombre:'Licuadora de mano con accesorios', cat:'cocina', precio:175000, stock:2 },
-  { id:'ELE-001', nombre:'Parlante Bluetooth portátil', cat:'electronica', precio:150000, oferta:129000, stock:6, destacado:true },
-  { id:'ELE-002', nombre:'Auriculares inalámbricos', cat:'electronica', precio:120000, stock:10 },
-  { id:'ELE-003', nombre:'Reloj inteligente deportivo', cat:'electronica', precio:210000, stock:3 },
-  { id:'ELE-004', nombre:'Lámpara LED recargable', cat:'electronica', precio:85000, stock:15 },
-  { id:'CEL-001', nombre:'Cargador rápido 20W USB-C', cat:'celular', precio:65000, stock:20, destacado:true },
-  { id:'CEL-002', nombre:'Cable USB-C reforzado 1 m', cat:'celular', precio:25000, stock:30 },
-  { id:'CEL-003', nombre:'Power bank 10.000 mAh', cat:'celular', precio:130000, stock:7 },
-  { id:'CEL-004', nombre:'Soporte de celular para auto', cat:'celular', precio:45000, stock:0 },
-  { id:'HOG-001', nombre:'Zapatilla eléctrica 4 tomas con USB', cat:'hogar', precio:70000, stock:9 },
-  { id:'HOG-002', nombre:'Ventilador de mesa recargable', cat:'hogar', precio:160000, stock:0 },
-  { id:'HOG-003', nombre:'Tira de luces LED 5 m con control', cat:'hogar', precio:95000, oferta:79000, stock:11 }
-];
+/* Los productos se leen de la planilla de Google Sheets publicada como CSV.
+   Columnas: Código, Nombre, Categoría, Precio, Precio oferta, Stock, Destacado, Mostrar en web, Foto.
+   Foto: link que completa la página de carga. Si está vacío, se busca fotos/CÓDIGO.jpg en el sitio. */
+const CATALOGO_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRLegjgi7-wJYUbgo98GyiLDEPmO2evj259BDdN0_7HNhc8MVG9-kREQaF1kHYxJX6rjHBxq4F0cuWy/pub?gid=1768066259&single=true&output=csv';
+const CARPETA_FOTOS = 'fotos/';
+const PREFIJOS = { COC: 'cocina', ELE: 'electronica', CEL: 'celular', HOG: 'hogar' };
+let PRODUCTOS = [];
 /* ============================================================== */
 
 /* Ícono por producto (se usa mientras no haya foto). */
@@ -528,7 +515,10 @@ const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const precioFinal = (p) => p.oferta && p.oferta < p.precio ? p.oferta : p.precio;
 const catNombre = (id) => (CATEGORIAS.find((c) => c.id === id) || {}).nombre || '';
-const byId = Object.fromEntries(PRODUCTOS.map((p) => [p.id, p]));
+let byId = {};
+const KEY_CATALOGO = 'aleNovedades.catalogo';
+let cargando = true;
+let errorCarga = false;
 
 const KEY = 'aleNovedades.pedido';
 const KEY_DATOS = 'aleNovedades.datos';
@@ -537,13 +527,118 @@ const KEY_SENT = 'aleNovedades.enviado';
 let state = { cat: 'todos', q: '', sort: 'destacados' };
 let cart = {};
 try { cart = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cart = {}; }
-for (const id of Object.keys(cart)) { if (!byId[id] || byId[id].stock <= 0) delete cart[id]; }
+function limpiarCarrito() {
+  for (const id of Object.keys(cart)) {
+    if (!byId[id] || byId[id].stock <= 0) delete cart[id];
+    else if (cart[id] > byId[id].stock) cart[id] = byId[id].stock;
+  }
+  saveCart();
+}
+function itemsValidos() { return Object.entries(cart).filter(([id]) => byId[id]); }
 function saveCart() { try { localStorage.setItem(KEY, JSON.stringify(cart)); } catch (e) {} }
+
+/* ---------- Lectura de la planilla ---------- */
+function parseCSV(text) {
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+      else f += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === '\n') { row.push(f); rows.push(row); row = []; f = ''; }
+    else if (c !== '\r') f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+const numero = (v) => { const d = String(v || '').split(/,00$|\.00$/)[0].replace(/[^0-9]/g, ''); return d ? parseInt(d, 10) : 0; };
+const esSi = (v) => norm(String(v || '').trim()).startsWith('s');
+function categoriaId(nombre, codigo) {
+  const pre = String(codigo || '').split('-')[0].toUpperCase();
+  if (PREFIJOS[pre]) return PREFIJOS[pre];
+  const n = norm(String(nombre || '').trim());
+  if (!n) return 'otros';
+  const encontrada = CATEGORIAS.find((c) => norm(c.nombre) === n);
+  if (encontrada) return encontrada.id;
+  const id = 'c-' + n.replace(/[^a-z0-9]+/g, '-');
+  if (!CATEGORIAS.find((c) => c.id === id)) {
+    CATEGORIAS.splice(CATEGORIAS.length - 1, 0, { id, nombre: String(nombre).trim() });
+  }
+  return id;
+}
+function fotoValida(v) { const u = String(v || '').trim(); return /^https:\/\//i.test(u) ? u : ''; }
+function productosDesdeCSV(text) {
+  const rows = parseCSV(text);
+  if (!rows.length) return [];
+  const head = rows[0].map((h) => norm(h.trim()));
+  const col = (nombre) => head.indexOf(nombre);
+  const c = { cod: col('codigo'), nom: col('nombre'), cat: col('categoria'), pre: col('precio'), ofe: col('precio oferta'), sto: col('stock'), des: col('destacado'), mos: col('mostrar en web'), fot: col('foto') };
+  if (c.cod < 0 || c.nom < 0 || c.pre < 0) throw new Error('Formato de planilla no reconocido');
+  const lista = [];
+  const vistos = new Set();
+  for (const r of rows.slice(1)) {
+    const id = String(r[c.cod] || '').trim().toUpperCase();
+    const nombre = String(r[c.nom] || '').trim();
+    if (!id || !nombre || vistos.has(id)) continue;
+    if (c.mos >= 0 && String(r[c.mos] || '').trim() && !esSi(r[c.mos])) continue;
+    const precio = numero(r[c.pre]);
+    if (!precio) continue;
+    const oferta = c.ofe >= 0 ? numero(r[c.ofe]) : 0;
+    vistos.add(id);
+    lista.push({
+      id, nombre,
+      cat: categoriaId(c.cat >= 0 ? r[c.cat] : '', id),
+      catNombre: c.cat >= 0 ? String(r[c.cat] || '').trim() : '',
+      precio,
+      oferta: oferta && oferta < precio ? oferta : null,
+      stock: c.sto >= 0 ? numero(r[c.sto]) : 0,
+      destacado: c.des >= 0 ? esSi(r[c.des]) : false,
+      foto: c.fot >= 0 ? fotoValida(r[c.fot]) : ''
+    });
+  }
+  return lista;
+}
+function usarCatalogo(lista) {
+  PRODUCTOS = lista;
+  byId = Object.fromEntries(PRODUCTOS.map((p) => [p.id, p]));
+  limpiarCarrito();
+}
+async function cargarCatalogo() {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(KEY_CATALOGO) || 'null');
+    if (guardado && Array.isArray(guardado.lista) && guardado.lista.length) {
+      guardado.lista.forEach((p) => { p.cat = categoriaId(p.catNombre, p.id); });
+      usarCatalogo(guardado.lista); cargando = false; renderTodo();
+    }
+  } catch (e) {}
+  try {
+    const res = await fetch(CATALOGO_CSV, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const lista = productosDesdeCSV(await res.text());
+    usarCatalogo(lista);
+    errorCarga = false;
+    try { localStorage.setItem(KEY_CATALOGO, JSON.stringify({ lista })); } catch (e) {}
+  } catch (e) {
+    if (!PRODUCTOS.length) errorCarga = true;
+  }
+  cargando = false;
+  renderTodo();
+}
+function renderTodo() { renderChips(); renderGrid(); renderCart(); }
+const ICONO_GENERICO = '<path d="M8 16l16-8 16 8v18l-16 8-16-8z"/><path d="M8 16l16 8 16-8M24 24v18"/>';
+function iconoProducto(id, cat) { return SVG(DIBUJOS[id] || ICONOS_CAT[cat] || ICONO_GENERICO); }
 
 /* ---------- Catálogo ---------- */
 function renderChips() {
-  $('chips').innerHTML = CATEGORIAS.map((c) =>
-    `<button type="button" class="chip" data-cat="${c.id}" aria-pressed="${state.cat === c.id}">${SVG(ICONOS_CAT[c.id] || '', 2.6)}${esc(c.nombre)}</button>`
+  const conProductos = (c) => {
+    if (!PRODUCTOS.length || c.id === 'todos') return true;
+    if (c.id === 'ofertas') return PRODUCTOS.some((p) => p.oferta && p.oferta < p.precio);
+    return PRODUCTOS.some((p) => p.cat === c.id);
+  };
+  $('chips').innerHTML = CATEGORIAS.filter(conProductos).map((c) =>
+    `<button type="button" class="chip" data-cat="${c.id}" aria-pressed="${state.cat === c.id}">${SVG(ICONOS_CAT[c.id] || ICONO_GENERICO, 2.6)}${esc(c.nombre)}</button>`
   ).join('');
 }
 
@@ -587,9 +682,8 @@ function card(p, i) {
   if (p.stock <= 0) stock = '<span class="stock out">Sin stock por ahora</span>';
   else if (p.stock <= 3) stock = `<span class="stock low">Quedan ${p.stock}</span>`;
   else stock = '<span class="stock">Disponible</span>';
-  const media = p.foto
-    ? `<img src="${esc(p.foto)}" alt="${esc(p.nombre)}" loading="lazy">`
-    : SVG(DIBUJOS[p.id] || ICONOS_CAT[p.cat] || '');
+  const fuente = p.foto || `${CARPETA_FOTOS}${encodeURIComponent(p.id)}.jpg`;
+  const media = `<img src="${esc(fuente)}" alt="${esc(p.nombre)}" loading="lazy" referrerpolicy="no-referrer" data-pid="${esc(p.id)}" data-cat="${esc(p.cat)}">`;
   return `<article class="card${p.stock <= 0 ? ' out' : ''}" style="--d:${Math.min(i, 8) * 40}ms">
     <div class="tile">${media}${badge}<span class="code">${esc(p.id)}</span></div>
     <div class="card-body">
@@ -605,9 +699,19 @@ function card(p, i) {
 }
 
 function renderGrid() {
+  const body = $('catalogBody');
+  if (cargando && !PRODUCTOS.length) {
+    $('resultCount').textContent = 'Cargando productos...';
+    body.innerHTML = '<div class="grid"><div class="empty"><b>Cargando el catálogo</b>En unos segundos aparecen los productos.</div></div>';
+    return;
+  }
+  if (errorCarga) {
+    $('resultCount').textContent = '';
+    body.innerHTML = '<div class="grid"><div class="empty"><b>No pudimos cargar el catálogo</b>Recargá la página o consultanos por WhatsApp y te pasamos los productos disponibles.</div></div>';
+    return;
+  }
   const list = filtrados();
   $('resultCount').textContent = list.length === 1 ? '1 producto' : `${list.length} productos`;
-  const body = $('catalogBody');
   if (!list.length) {
     body.innerHTML = `<div class="grid"><div class="empty"><b>Sin resultados</b>No encontramos "${esc(state.q)}". Probá con otra palabra o consultanos por WhatsApp.</div></div>`;
     return;
@@ -628,12 +732,12 @@ function renderGrid() {
 }
 
 function refreshControls() {
-  document.querySelectorAll('[data-ctl]').forEach((el) => { el.innerHTML = control(byId[el.dataset.ctl]); });
+  document.querySelectorAll('[data-ctl]').forEach((el) => { const p = byId[el.dataset.ctl]; if (p) el.innerHTML = control(p); });
 }
 
 /* ---------- Pedido ---------- */
-function totalItems() { return Object.values(cart).reduce((a, b) => a + b, 0); }
-function subtotal() { return Object.entries(cart).reduce((s, [id, q]) => s + precioFinal(byId[id]) * q, 0); }
+function totalItems() { return itemsValidos().reduce((a, [, q]) => a + q, 0); }
+function subtotal() { return itemsValidos().reduce((s, [id, q]) => s + precioFinal(byId[id]) * q, 0); }
 
 function addToCart(id) {
   const p = byId[id]; if (!p || p.stock <= 0) return;
@@ -645,7 +749,7 @@ function addToCart(id) {
 }
 
 function setQty(id, q) {
-  const p = byId[id];
+  const p = byId[id]; if (!p) return;
   if (q > p.stock) { toast(`Solo hay ${p.stock} unidades disponibles`); q = p.stock; }
   if (q <= 0) delete cart[id]; else cart[id] = q;
   saveCart(); renderCart();
@@ -658,7 +762,7 @@ function renderCart() {
   $('bar').hidden = !n;
   $('barN').textContent = n === 1 ? '1 producto' : `${n} productos`;
   $('barT').textContent = fmt(subtotal());
-  const ids = Object.keys(cart);
+  const ids = itemsValidos().map(([id]) => id);
   if (!ids.length) {
     $('lines').innerHTML = '<li class="cart-empty"><span class="logo"><span class="seal">ale</span></span><br>Todavía no agregaste productos.<br>Tocá Agregar en el catálogo y aparecen acá.</li>';
   } else {
@@ -705,7 +809,7 @@ function soloDigitos(v) { return String(v || '').replace(/\D/g, ''); }
 
 function registrar() {
   if (!CONFIG.registroUrl) return;
-  const items = Object.entries(cart).map(([id, q]) => ({ p: byId[id], q }));
+  const items = itemsValidos().map(([id, q]) => ({ p: byId[id], q }));
   const datos = {
     pedido: pedidoId(),
     nombre: $('nombre').value.trim(),
@@ -742,7 +846,7 @@ function nuevoPedido() {
 }
 
 function mensaje() {
-  const lineas = Object.entries(cart).map(([id, q]) => {
+  const lineas = itemsValidos().map(([id, q]) => {
     const p = byId[id];
     return `- [${p.id}] ${q} x ${p.nombre}: ${fmt(precioFinal(p) * q)}`;
   });
@@ -823,7 +927,16 @@ function toast(msg) {
 $('zona').innerHTML = '<option value="">Elegí tu ciudad</option>' + ZONAS.map((z) => `<option>${esc(z)}</option>`).join('');
 $('pago').innerHTML = PAGOS.map((p) => `<option>${esc(p)}</option>`).join('');
 loadDatos();
-renderChips(); renderGrid(); renderCart();
+renderTodo();
+cargarCatalogo();
+$('catalogBody').addEventListener('error', (e) => {
+  const img = e.target;
+  if (!img || img.tagName !== 'IMG' || !img.dataset.pid) return;
+  const local = `${CARPETA_FOTOS}${encodeURIComponent(img.dataset.pid)}.jpg`;
+  if (!img.dataset.intentoLocal && !img.getAttribute('src').startsWith(CARPETA_FOTOS)) { img.dataset.intentoLocal = '1'; img.src = local; return; }
+  img.insertAdjacentHTML('afterend', iconoProducto(img.dataset.pid, img.dataset.cat));
+  img.remove();
+}, true);
 try { if (totalItems() && localStorage.getItem(KEY_SENT) === pedidoActual) { $('sentId').textContent = pedidoActual; $('sent').hidden = false; } } catch (e) {}
 
 const waConsulta = waLink(`Hola ${CONFIG.nombre}, quiero hacer una consulta.`);
