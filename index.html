@@ -266,6 +266,8 @@ legend{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:
 
 .toast{position:fixed;left:50%;top:calc(84px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:35;background:var(--ink);color:var(--paper-ink);padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;max-width:calc(100% - 32px);box-shadow:var(--shadow);animation:drop .25s ease-out;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @keyframes drop{from{transform:translate(-50%,-10px);opacity:0}}
+.info-card .plus-code{font-size:13px;margin-top:-4px}
+.info-card .plus-code b{font-variant-numeric:tabular-nums;letter-spacing:.02em}
 </style>
 </head>
 <body>
@@ -344,14 +346,15 @@ legend{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:
         <div class="local-text">
           <span class="info-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle></svg></span>
           <h3>Local en Lambaré</h3>
-          <p>Calle Francisco Acuña de Figueroa. Retirá tu pedido o mirá los productos en persona.</p>
+          <p>Calle Francisco Acuña de Figueroa, Lambaré. Retirá tu pedido o mirá los productos en persona.</p>
+          <p class="plus-code">Ubicación exacta: <b>JCV2+FPJ</b></p>
           <div class="actions">
-            <a class="btn btn-solid" id="mapLink" href="https://maps.app.goo.gl/3EskHzt9Kp8gpgFGA" target="_blank" rel="noopener">Cómo llegar</a>
+            <a class="btn btn-solid" id="mapLink" href="https://www.google.com/maps/dir/?api=1&amp;destination=-25.356284%2C-57.5982261&amp;destination_place_id=ChIJf2DVg3WpXZQRo6-7hmkEq5A" target="_blank" rel="noopener">Cómo llegar</a>
             <button class="btn btn-ghost" id="copyAddr" type="button">Copiar dirección</button>
           </div>
         </div>
         <div class="map-box" id="mapBox">
-          <a class="map-pin" href="https://maps.app.goo.gl/3EskHzt9Kp8gpgFGA" target="_blank" rel="noopener" aria-label="Abrir la ubicación en Google Maps">
+          <a class="map-pin" href="https://www.google.com/maps/search/?api=1&amp;query=-25.356284%2C-57.5982261&amp;query_place_id=ChIJf2DVg3WpXZQRo6-7hmkEq5A" target="_blank" rel="noopener" aria-label="Abrir la ubicación en Google Maps">
             <span class="logo"><span class="seal">ale</span><span class="word">novedades.</span></span>
             <span class="dot"></span>
           </a>
@@ -454,9 +457,9 @@ const CONFIG = {
   whatsappVisible: '+595 987 309 433',
   // Link del registro de pedidos (Apps Script de Google Sheets). Vacío = no se registra.
   registroUrl: 'https://script.google.com/macros/s/AKfycbx5rg2vOMh41gfB5UhlMsINvw-zU-6vsvS04V9vzh-yKgKUJLu_r92AHzUL8oos5POW/exec',
-  direccion: 'Calle Francisco Acuña de Figueroa, Lambaré, Paraguay',
-  // Mapa: para un pin exacto, reemplazá la dirección por las coordenadas (ej.: '-25.3456,-57.6123')
-  mapaBusqueda: 'Calle Francisco Acuña de Figueroa, Lambaré, Paraguay',
+  direccion: 'Ale Novedades, Calle Francisco Acuña de Figueroa (JCV2+FPJ), Lambaré 110717, Paraguay',
+  // Mapa: coordenadas exactas del local (de Google Maps)
+  mapaBusqueda: '-25.356284,-57.5982261',
   monedaPrefijo: 'Gs. '
 };
 
@@ -950,7 +953,7 @@ $('footWa').innerHTML = `<span>WhatsApp</span><a href="${waConsulta}" target="_b
   f.title = 'Ubicación de Ale Novedades en Google Maps';
   f.loading = 'lazy';
   f.referrerPolicy = 'no-referrer-when-downgrade';
-  f.src = 'https://maps.google.com/maps?q=' + encodeURIComponent(CONFIG.mapaBusqueda) + '&z=16&output=embed';
+  f.src = 'https://maps.google.com/maps?q=' + encodeURIComponent(CONFIG.mapaBusqueda) + '&z=18&output=embed';
   $('mapBox').prepend(f);
   f.addEventListener('load', () => { const pin = $('mapBox').querySelector('.map-pin'); if (pin) pin.hidden = true; });
 })();
