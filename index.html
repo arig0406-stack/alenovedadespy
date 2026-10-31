@@ -117,7 +117,7 @@ h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.05;
 .cat-title span{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .meta-line{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 0 18px}
 .meta-line .count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
 @media (max-width:540px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
 .card{display:flex;flex-direction:column;border-radius:var(--r);overflow:hidden;background:var(--paper);box-shadow:var(--shadow);min-width:0;animation:rise .35s ease-out both}
 @keyframes rise{from{transform:translateY(8px)}to{transform:none}}
@@ -725,10 +725,8 @@ function renderGrid() {
     </section>`;
   if (state.q.trim()) { body.innerHTML = block(`Resultados para "${state.q.trim()}"`, list); return; }
   if (state.cat === 'todos') {
-    body.innerHTML = CATEGORIAS.filter((c) => c.id !== 'todos' && c.id !== 'ofertas')
-      .map((c) => [c, list.filter((p) => p.cat === c.id)])
-      .filter(([, items]) => items.length)
-      .map(([c, items]) => block(c.nombre, items, c.id)).join('');
+    /* Todo: todos los productos juntos en una sola grilla, sin separar por categoría */
+    body.innerHTML = `<div class="grid">${list.map(card).join('')}</div>`;
     return;
   }
   body.innerHTML = block(catNombre(state.cat), list, state.cat);
