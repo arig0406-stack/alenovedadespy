@@ -207,7 +207,7 @@ h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.05;
 
 /* ---------- Pie ---------- */
 /* ---------- Condiciones de venta ---------- */
-.terms{padding-block:8px 56px}
+.terms{padding-block:8px 56px;scroll-margin-top:calc(var(--hdr,70px) + 16px)}
 .terms h2{font-size:clamp(28px,4vw,40px);margin-bottom:20px}
 .terms-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
 .terms details{border-radius:var(--r);background:var(--paper);box-shadow:var(--shadow)}
@@ -525,29 +525,29 @@ button.tile{border:0;padding:0;font:inherit;cursor:zoom-in;width:auto}
   <section class="wrap terms" id="condiciones" aria-labelledby="termsTitle">
     <h2 id="termsTitle">Condiciones de venta</h2>
     <div class="terms-list">
-      <details>
+      <details open>
         <summary>Pedidos y precios</summary>
         <p>Armás tu pedido en la página y lo enviás por WhatsApp. El pedido queda confirmado cuando te respondemos por WhatsApp con el total.</p>
         <p>Los precios están en guaraníes. El precio y el stock pueden cambiar hasta que confirmamos tu pedido.</p>
       </details>
-      <details>
+      <details open>
         <summary>Envíos y retiro</summary>
         <p>Enviamos a Asunción y a todas las ciudades de Central. Tu pedido llega en 24 a 48 horas hábiles después de confirmado.</p>
         <p>El costo del envío depende de tu zona y te lo confirmamos por WhatsApp antes de enviarlo. También podés retirar tu pedido en Lambaré sin costo.</p>
       </details>
-      <details>
+      <details open>
         <summary>Formas de pago</summary>
         <p>Transferencia bancaria, pago con QR, efectivo contra entrega o tarjeta de débito y crédito.</p>
       </details>
-      <details>
+      <details open>
         <summary>Revisá tu producto al recibirlo</summary>
         <p>Probá el producto en el momento de la entrega o del retiro. Si tiene una falla o no funciona, avisanos en ese momento y te lo cambiamos por uno igual. Si no hay otro igual, lo resolvemos con vos por WhatsApp.</p>
       </details>
-      <details>
+      <details open>
         <summary>Cambios y devoluciones</summary>
         <p>Cambiamos los productos que tengan una falla, avisando al recibirlos. Para cualquier otra consulta sobre tu compra, escribinos por WhatsApp y lo vemos juntos.</p>
       </details>
-      <details>
+      <details open>
         <summary>Tus datos</summary>
         <p>Tu nombre, celular y dirección se usan solo para preparar y entregar tu pedido. No los compartimos con nadie.</p>
       </details>
@@ -1323,10 +1323,10 @@ try { if (totalItems() && localStorage.getItem(KEY_SENT) === pedidoActual) { $('
 const waConsulta = waLink(`Hola ${CONFIG.nombre}, quiero hacer una consulta.`);
 $('waFloat').href = waConsulta;
 $('anio').textContent = new Date().getFullYear();
-// Desde el carrito: cerrarlo y bajar a las condiciones abriendo la primera
+// Desde el carrito: cerrarlo y bajar a las condiciones (el margen de .terms deja el título debajo de la barra)
 $('verCondiciones').addEventListener('click', (e) => {
   e.preventDefault(); closeCart();
-  setTimeout(() => { const s = $('condiciones'); s.querySelector('details').open = true; s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 250);
+  setTimeout(() => { $('condiciones').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 250);
 });
 $('footWa').innerHTML =`<span>WhatsApp</span><a href="${waConsulta}" target="_blank" rel="noopener">${esc(CONFIG.whatsappVisible)}</a>`;
 /* Mapa de Google: se carga en la página publicada (en la vista previa queda el mapa ilustrado) */
