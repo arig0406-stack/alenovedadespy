@@ -106,6 +106,29 @@ h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.05;
 .has-splash .card{animation-delay:calc(var(--d,0ms) + 2.35s)}
 @media (prefers-reduced-motion:reduce){.splash{display:none}}
 
+/* ---------- Portada: explorar ---------- */
+.explore{padding-block:18px 6px}
+.banner{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;background:var(--ink);color:var(--paper-ink);border-radius:24px;padding:22px 18px 22px 22px;overflow:hidden;box-shadow:var(--shadow);touch-action:pan-y}
+.banner::before{content:"";position:absolute;right:-60px;top:-60px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.10),transparent 70%);pointer-events:none}
+.bn-left{display:flex;flex-direction:column;gap:14px;min-width:0}
+.banner h1{font-size:clamp(26px,5.4vw,50px);line-height:1}
+.bn-stack{display:grid}
+.bn-txt,.bn-img{grid-area:1/1;opacity:0;visibility:hidden;transition:opacity .5s,transform .6s cubic-bezier(.2,.8,.2,1),visibility 0s .6s}
+.bn-txt{display:flex;flex-direction:column;align-items:flex-start;gap:4px;transform:translateY(12px)}
+.bn-img{transform:scale(.88) rotate(-3deg)}
+.bn-txt.on,.bn-img.on{opacity:1;visibility:visible;transform:none;transition:opacity .5s,transform .6s cubic-bezier(.2,.8,.2,1),visibility 0s}
+.bn-cat{font-size:12px;opacity:.7}
+.bn-name{font-weight:600;font-size:clamp(14px,2vw,18px);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bn-price{font-family:var(--display);font-size:clamp(20px,3vw,28px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.bn-btn{margin-top:8px;height:38px;padding:0 16px;border:0;border-radius:999px;background:var(--paper-ink);color:var(--ink);font-weight:600;font-size:14px;cursor:pointer}
+.bn-img{width:clamp(128px,34vw,300px);aspect-ratio:1/1;border:0;padding:0;border-radius:18px;background:radial-gradient(120% 90% at 30% 20%,var(--paper) 0%,var(--tile) 60%);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
+.bn-img img{width:100%;height:100%;object-fit:cover}
+.bn-img svg{width:44%;height:44%;opacity:.88}
+.bn-dots{display:flex;gap:6px}
+.bn-dots button{width:8px;height:8px;padding:0;border:0;border-radius:4px;background:var(--paper-ink);opacity:.35;cursor:pointer;transition:width .3s,opacity .3s}
+.bn-dots button[aria-current="true"]{width:22px;opacity:1}
+.explore:has(.bn-stack:empty){display:none}
+
 /* ---------- Catálogo ---------- */
 .catalog{padding-block:0 56px}
 .cat-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
@@ -445,8 +468,18 @@ button.tile{border:0;padding:0;font:inherit;cursor:zoom-in;width:auto}
 </header>
 
 <main id="inicio">
+  <section class="wrap explore" id="explorar" aria-labelledby="exTitle">
+    <div class="banner" id="banner" aria-roledescription="carrusel">
+      <div class="bn-left">
+        <h1 id="exTitle">¿Qué querés comprar?</h1>
+        <div class="bn-stack" id="bnTxt" aria-live="polite"></div>
+        <div class="bn-dots" id="bnDots" role="group" aria-label="Elegir producto"></div>
+      </div>
+      <div class="bn-stack" id="bnImg"></div>
+    </div>
+  </section>
+
   <section class="wrap catalog" id="catalogo" aria-label="Catálogo de productos">
-    <h1 class="sr-only">Ale Novedades: electrónica, bazar y hogar</h1>
     <div class="filters">
       <button type="button" class="menu-btn" id="menuBtn" aria-controls="catMenu" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Categorías
@@ -465,7 +498,7 @@ button.tile{border:0;padding:0;font:inherit;cursor:zoom-in;width:auto}
           <div class="sort">
             <label for="sort" class="sr-only">Ordenar</label>
             <select id="sort">
-              <option value="destacados">Destacados</option>
+              <option value="nuevos">Lo más nuevo</option>
               <option value="menor">Menor precio</option>
               <option value="mayor">Mayor precio</option>
               <option value="nombre">Nombre A-Z</option>
@@ -728,7 +761,7 @@ const KEY = 'aleNovedades.pedido';
 const KEY_DATOS = 'aleNovedades.datos';
 const KEY_ID = 'aleNovedades.numeroPedido';
 const KEY_SENT = 'aleNovedades.enviado';
-let state = { cat: 'todos', sub: '', q: '', sort: 'destacados' };
+let state = { cat: 'todos', sub: '', q: '', sort: 'nuevos' };
 let cart = {};
 try { cart = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cart = {}; }
 function limpiarCarrito() {
@@ -808,6 +841,8 @@ function productosDesdeCSV(text) {
 }
 function usarCatalogo(lista) {
   PRODUCTOS = lista;
+  /* n = orden de carga: la planilla agrega cada producto nuevo al final */
+  PRODUCTOS.forEach((p, i) => { p.n = i; });
   byId = Object.fromEntries(PRODUCTOS.map((p) => [p.id, p]));
   limpiarCarrito();
 }
@@ -832,8 +867,39 @@ async function cargarCatalogo() {
   cargando = false;
   renderTodo();
 }
+/* ---------- Portada: banner, un producto a la vez ---------- */
+let exFirma = '', bnActual = 0, bnTotal = 0;
+function renderExplorar() {
+  const conStock = PRODUCTOS.filter((p) => p.stock > 0);
+  const firma = conStock.map((p) => p.id).sort().join();
+  if (firma === exFirma) return;
+  exFirma = firma;
+  /* Mezcla al azar, primero los que tienen foto cargada */
+  const mezcla = conStock.map((p) => [p, (p.foto ? 0 : 1) + Math.random()]).sort((a, b) => a[1] - b[1]).map(([p]) => p).slice(0, 8);
+  bnTotal = mezcla.length; bnActual = 0;
+  $('bnTxt').innerHTML = mezcla.map((p, i) => `<div class="bn-txt${i ? '' : ' on'}"${i ? ' aria-hidden="true"' : ''}>
+      <span class="bn-cat">${esc(subNombre(p) || catNombre(p.cat))}</span>
+      <span class="bn-name">${esc(p.nombre)}</span>
+      <span class="bn-price">${fmt(precioFinal(p))}</span>
+      <button type="button" class="bn-btn" data-open="${esc(p.id)}">Ver producto</button>
+    </div>`).join('');
+  $('bnImg').innerHTML = mezcla.map((p, i) => {
+    const fuente = p.foto || `${CARPETA_FOTOS}${encodeURIComponent(p.id)}.jpg`;
+    return `<button type="button" class="bn-img${i ? '' : ' on'}" data-open="${esc(p.id)}" aria-label="Ver ${esc(p.nombre)}" tabindex="${i ? -1 : 0}"><img src="${esc(fuente)}" alt="" referrerpolicy="no-referrer" data-pid="${esc(p.id)}" data-cat="${esc(p.cat)}"></button>`;
+  }).join('');
+  $('bnDots').innerHTML = mezcla.map((p, i) => `<button type="button" data-bn="${i}" aria-label="Producto ${i + 1} de ${bnTotal}" aria-current="${!i}"></button>`).join('');
+}
+function bnIr(i) {
+  if (!bnTotal) return;
+  bnActual = (i + bnTotal) % bnTotal;
+  ['bnTxt', 'bnImg'].forEach((id) => [...$(id).children].forEach((el, k) => {
+    el.classList.toggle('on', k === bnActual);
+    if (id === 'bnTxt') el.setAttribute('aria-hidden', k !== bnActual); else el.tabIndex = k === bnActual ? 0 : -1;
+  }));
+  [...$('bnDots').children].forEach((d, k) => d.setAttribute('aria-current', k === bnActual));
+}
 function renderTodo() {
-  renderChips(); renderGrid(); renderCart();
+  renderChips(); renderGrid(); renderCart(); renderExplorar();
   const id = decodeURIComponent(location.hash.slice(1));
   if (id && byId[id] && fichaId !== id) abrirFicha(id, true);
   else if (fichaId && byId[fichaId]) $('pdBody').innerHTML = fichaHTML(byId[fichaId]);
@@ -933,7 +999,7 @@ function filtrados() {
   if (state.sort === 'menor') list.sort((a, b) => disp(a) - disp(b) || precioFinal(a) - precioFinal(b));
   else if (state.sort === 'mayor') list.sort((a, b) => disp(a) - disp(b) || precioFinal(b) - precioFinal(a));
   else if (state.sort === 'nombre') list.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-  else list.sort((a, b) => disp(a) - disp(b) || (b.destacado ? 1 : 0) - (a.destacado ? 1 : 0));
+  else list.sort((a, b) => disp(a) - disp(b) || b.n - a.n);
   return list;
 }
 
@@ -1030,7 +1096,8 @@ function renderGrid() {
   if (state.q.trim()) { body.innerHTML = block(`Resultados para "${state.q.trim()}"`, list); return; }
   if (state.cat === 'todos') {
     /* Todo: todos los productos juntos en una sola grilla, sin separar por categoría */
-    body.innerHTML = `<div class="grid">${list.map(card).join('')}</div>`;
+    const titulo = state.sort === 'nuevos' ? 'Lo último que subimos' : 'Todos los productos';
+    body.innerHTML = `<div class="cat-head"><h2>${titulo}</h2></div><div class="grid">${list.map(card).join('')}</div>`;
     return;
   }
   const subs = subcategoriasDe(state.cat);
@@ -1318,6 +1385,40 @@ $('catalogBody').addEventListener('error', (e) => {
   img.insertAdjacentHTML('afterend', iconoProducto(img.dataset.pid, img.dataset.cat));
   img.remove();
 }, true);
+(() => {
+  const banner = $('banner');
+  let pausaHasta = 0, encima = false, x0 = null, deslizo = false;
+  const pausar = () => { pausaHasta = Date.now() + 7000; };
+  banner.addEventListener('click', (e) => {
+    if (deslizo) { deslizo = false; return; }
+    const d = e.target.closest('[data-bn]'); if (d) { bnIr(+d.dataset.bn); pausar(); return; }
+    const b = e.target.closest('[data-open]'); if (b) abrirFicha(b.dataset.open);
+  });
+  /* Deslizar con el dedo para pasar de producto */
+  banner.addEventListener('pointerdown', (e) => { x0 = e.clientX; pausar(); });
+  banner.addEventListener('pointerup', (e) => {
+    if (x0 === null) return;
+    const dx = e.clientX - x0; x0 = null;
+    if (Math.abs(dx) > 40) { deslizo = true; bnIr(bnActual + (dx < 0 ? 1 : -1)); setTimeout(() => { deslizo = false; }, 50); }
+  });
+  banner.addEventListener('focusin', pausar);
+  banner.addEventListener('mouseenter', () => { encima = true; });
+  banner.addEventListener('mouseleave', () => { encima = false; pausar(); });
+  banner.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.dataset.pid) return;
+    const local = `${CARPETA_FOTOS}${encodeURIComponent(img.dataset.pid)}.jpg`;
+    if (!img.dataset.intentoLocal && !img.getAttribute('src').startsWith(CARPETA_FOTOS)) { img.dataset.intentoLocal = '1'; img.src = local; return; }
+    img.insertAdjacentHTML('afterend', iconoProducto(img.dataset.pid, img.dataset.cat));
+    img.remove();
+  }, true);
+  /* Cambia solo cada 4 segundos; si la persona lo toca o pasa el mouse, espera */
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  setInterval(() => {
+    if (bnTotal < 2 || encima || document.hidden || fichaId || Date.now() < pausaHasta) return;
+    bnIr(bnActual + 1);
+  }, 4000);
+})();
 try { if (totalItems() && localStorage.getItem(KEY_SENT) === pedidoActual) { $('sentId').textContent = pedidoActual; $('sent').hidden = false; } } catch (e) {}
 
 const waConsulta = waLink(`Hola ${CONFIG.nombre}, quiero hacer una consulta.`);
