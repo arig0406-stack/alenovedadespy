@@ -778,7 +778,7 @@ function productosDesdeCSV(text) {
   if (!rows.length) return [];
   const head = rows[0].map((h) => norm(h.trim()));
   const col = (nombre) => head.indexOf(nombre);
-  const c = { cod: col('codigo'), nom: col('nombre'), cat: col('categoria'), pre: col('precio'), ofe: col('precio oferta'), sto: col('stock'), des: col('destacado'), mos: col('mostrar en web'), fot: col('foto'), sub: col('subcategoria'), des: col('descripcion') };
+  const c = { cod: col('codigo'), nom: col('nombre'), cat: col('categoria'), pre: col('precio'), ofe: col('precio oferta'), sto: col('stock'), des: col('destacado'), mos: col('mostrar en web'), fot: col('foto'), sub: col('subcategoria'), dsc: col('descripcion') };
   if (c.cod < 0 || c.nom < 0 || c.pre < 0) throw new Error('Formato de planilla no reconocido');
   const lista = [];
   const vistos = new Set();
@@ -801,7 +801,7 @@ function productosDesdeCSV(text) {
       destacado: c.des >= 0 ? esSi(r[c.des]) : false,
       foto: c.fot >= 0 ? fotoValida(r[c.fot]) : '',
       sub: c.sub >= 0 ? String(r[c.sub] || '').trim().replace(/\s+/g, ' ') : '',
-      desc: c.des >= 0 ? String(r[c.des] || '').trim() : ''
+      desc: c.dsc >= 0 ? String(r[c.dsc] || '').trim() : ''
     });
   }
   return lista;
